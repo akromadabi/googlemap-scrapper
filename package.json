@@ -1,0 +1,23 @@
+{
+  "name": "google-maps-local-scraper",
+  "version": "1.0.0",
+  "description": "A beautiful, premium, and unlimited local Google Maps Scraper.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "puppeteer": "^22.6.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "keywords": [
+    "scraper",
+    "google-maps",
+    "lead-generation"
+  ],
+  "author": "Antigravity",
+  "license": "MIT"
+}

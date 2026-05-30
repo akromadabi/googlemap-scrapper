@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>G-Map Extractor</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Vanilla CSS Stylesheet -->
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <i class="fa-solid fa-map-location-dot logo-icon"></i>
+        <div class="logo-text">
+          <h1>G-Map Extractor</h1>
+          <p>Local Lead Generator</p>
+        </div>
+      </div>
+      <div class="header-status">
+        <span class="status-indicator"></span> Ready
+      </div>
+    </header>
+
+    <!-- Navigation Tabs (Desktop view) -->
+    <nav class="tab-navigation desktop-only">
+      <button class="tab-btn active" data-tab="database-tab">
+        <i class="fa-solid fa-database"></i> Database
+      </button>
+      <button class="tab-btn" data-tab="outreach-tab">
+        <i class="fa-brands fa-whatsapp"></i> WhatsApp Outreach
+      </button>
+      <button class="tab-btn" data-tab="history-tab">
+        <i class="fa-solid fa-history"></i> Saved History
+      </button>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="app-main">
+      <!-- ============================================== -->
+      <!-- TAB 1: DATABASE & SCRAPER                      -->
+      <!-- ============================================== -->
+      <div id="database-tab" class="tab-content active">
+        <div class="split-layout">
+          <!-- Left Column: Controls & Progress -->
+          <section class="control-panel">
+            <!-- Search Controls -->
+            <div class="panel-card">
+              <form id="scrape-form" class="scrape-form">
+                <div class="input-group">
+                  <label for="search-query">Search Keyword</label>
+                  <div class="input-wrapper">
+                    <input type="text" id="search-query" placeholder="e.g. Dentists in Seattle, Kopi Jakarta" required>
+                  </div>
+                </div>
+
+                <div class="input-group">
+                  <div class="label-row">
+                    <label for="max-results">Max Results Limit</label>
+                    <span id="max-val-display" class="val-badge">25</span>
+                  </div>
+                  <input type="range" id="max-results" min="5" max="200" step="5" value="25">
+                  <div class="preset-buttons">
+                    <button type="button" class="preset-btn" data-val="10">10</button>
+                    <button type="button" class="preset-btn active" data-val="25">25</button>
+                    <button type="button" class="preset-btn" data-val="50">50</button>
+                    <button type="button" class="preset-btn" data-val="100">100</button>
+                  </div>
+                </div>
+
+                <button type="submit" id="submit-btn" class="btn-primary">
+                  <span class="btn-text">Generate Leads</span>
+                </button>
+              </form>
+            </div>
+
+            <!-- Live Progress Log -->
+            <div id="progress-card" class="panel-card progress-card hidden">
+              <div class="progress-header">
+                <h3><i class="fa-solid fa-circle-notch fa-spin text-primary"></i> Scraping...</h3>
+                <button id="abort-btn" class="btn-abort" title="Abort"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              
+              <div class="progress-metrics">
+                <div class="progress-bar-container">
+                  <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%"></div>
+                </div>
+                <div class="progress-status-row">
+                  <span id="progress-percent">0%</span>
+                  <span id="progress-count">0 / 0</span>
+                </div>
+              </div>
+              
+              <div class="log-container">
+                <div id="activity-log-items" class="log-items">
+                  <div class="log-item system">Initializing browser...</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Right Column: Results Dashboard -->
+          <section class="results-panel">
+            <!-- Minimal Stats Widgets -->
+            <div class="stats-grid">
+              <div class="stat-card">
+                <span class="stat-label">Total Leads</span>
+                <span class="stat-value" id="stat-total-leads">0</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Avg Rating</span>
+                <span class="stat-value" id="stat-avg-rating">0.0</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Website Found</span>
+                <span class="stat-value" id="stat-websites">0%</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Phone Found</span>
+                <span class="stat-value" id="stat-phones">0%</span>
+              </div>
+            </div>
+
+            <!-- Database Table Card -->
+            <div class="panel-card table-card">
+              <div class="table-header-controls">
+                <div class="table-title">
+                  <h2>Extracted Database</h2>
+                  <span id="database-count-badge" class="count-badge">0 entries</span>
+                </div>
+                
+                <div class="search-filter-controls">
+                  <div class="search-wrapper">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="table-search" placeholder="Filter results...">
+                  </div>
+                  <div class="export-actions">
+                    <button id="export-csv-btn" class="btn-secondary" disabled>
+                      CSV
+                    </button>
+                    <button id="export-json-btn" class="btn-secondary" disabled>
+                      JSON
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Desktop Responsive Table View -->
+              <div class="table-responsive desktop-only">
+                <table id="leads-table">
+                  <thead>
+                    <tr>
+                      <th class="sortable" data-sort="name">Name <i class="fa-solid fa-sort"></i></th>
+                      <th class="sortable" data-sort="category">Category <i class="fa-solid fa-sort"></i></th>
+                      <th class="sortable text-center" data-sort="rating">Rating <i class="fa-solid fa-sort"></i></th>
+                      <th class="sortable text-center" data-sort="reviewsCount">Reviews <i class="fa-solid fa-sort"></i></th>
+                      <th>Phone</th>
+                      <th>Website</th>
+                      <th>Address</th>
+                    </tr>
+                  </thead>
+                  <tbody id="table-body">
+                    <tr class="empty-row-placeholder">
+                      <td colspan="7">
+                        <div class="empty-state">
+                          <h3>No Leads Generated</h3>
+                          <p>Enter a search keyword and click "Generate Leads" to start.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Mobile Compact Card List View (Visible only on mobile) -->
+              <div id="mobile-leads-list" class="mobile-only mobile-leads-list">
+                <div class="empty-state">
+                  <h3>No Leads Generated</h3>
+                  <p>Enter a search keyword and click "Generate Leads" to start.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ============================================== -->
+      <!-- TAB 2: WHATSAPP OUTREACH PANEL                 -->
+      <!-- ============================================== -->
+      <div id="outreach-tab" class="tab-content">
+        <div class="outreach-layout">
+          <!-- WhatsApp Message Template Editor -->
+          <section class="template-section panel-card">
+            <h2><i class="fa-solid fa-message"></i> WhatsApp Template Editor</h2>
+            <p class="section-desc">Compose your message template. Use place tags to personalize each outreach automatically.</p>
+            
+            <div class="template-editor-wrapper">
+              <div class="tag-badges">
+                <button type="button" class="tag-badge-btn" data-tag="{name}">+ {name}</button>
+                <button type="button" class="tag-badge-btn" data-tag="{category}">+ {category}</button>
+                <button type="button" class="tag-badge-btn" data-tag="{address}">+ {address}</button>
+                <button type="button" class="tag-badge-btn" data-tag="{phone}">+ {phone}</button>
+                <button type="button" class="tag-badge-btn" data-tag="{website}">+ {website}</button>
+              </div>
+              <textarea id="whatsapp-template" placeholder="Enter message text..."></textarea>
+            </div>
+            
+            <div class="template-instruction-info">
+              <span class="info-tag"><i class="fa-solid fa-circle-info"></i> Info</span>
+              <p>Placeholders inside <code>{curly_brackets}</code> will automatically fetch details for each business before sending.</p>
+            </div>
+          </section>
+
+          <!-- Outreach Prospects High-Density Deck -->
+          <section class="prospects-section panel-card">
+            <div class="prospects-header-row">
+              <div class="prospects-title">
+                <h2>Outreach List</h2>
+                <span id="outreach-count-badge" class="count-badge">0 prospects</span>
+              </div>
+              <div class="prospects-filters">
+                <input type="text" id="outreach-search" placeholder="Search prospects...">
+              </div>
+            </div>
+
+            <!-- Prospects High Density Container -->
+            <div id="prospects-deck" class="prospects-deck">
+              <div class="empty-state">
+                <h3>No Active Prospects</h3>
+                <p>Scrape leads or load a past search crawl from "Saved History" to begin outreach.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- ============================================== -->
+      <!-- TAB 3: SAVED HISTORY                           -->
+      <!-- ============================================== -->
+      <div id="history-tab" class="tab-content">
+        <div class="panel-card history-panel">
+          <div class="history-header">
+            <h2><i class="fa-solid fa-clock-rotate-left"></i> Saved Scrapes History</h2>
+            <p class="section-desc">Access and load any of your previous lead crawls instantly. All data is persisted locally in your data folder.</p>
+          </div>
+          
+          <div id="history-list" class="history-list">
+            <div class="empty-state">
+              <div class="empty-icon"><i class="fa-solid fa-folder-open"></i></div>
+              <h3>No History Found</h3>
+              <p>Your search crawls will automatically show up here once you run a scraping task.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Sticky Bottom Navigation Bar for Mobile (Android app styled) -->
+  <nav class="mobile-bottom-nav mobile-only">
+    <button class="bottom-nav-btn active" data-tab="database-tab">
+      <i class="fa-solid fa-database"></i>
+      <span>Database</span>
+    </button>
+    <button class="bottom-nav-btn" data-tab="outreach-tab">
+      <i class="fa-brands fa-whatsapp"></i>
+      <span>Outreach</span>
+    </button>
+    <button class="bottom-nav-btn" data-tab="history-tab">
+      <i class="fa-solid fa-history"></i>
+      <span>History</span>
+    </button>
+  </nav>
+
+  <!-- Main script -->
+  <script src="app.js"></script>
+</body>
+</html>
