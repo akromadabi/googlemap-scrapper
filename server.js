@@ -171,6 +171,36 @@ app.delete('/api/history/:id', (req, res) => {
   }
 });
 
+// Path to save template permanently on server disk
+const TEMPLATE_FILE = path.join(DATA_DIR, 'whatsapp_template.txt');
+
+// GET /api/template - Loads the saved WhatsApp message template
+app.get('/api/template', (req, res) => {
+  try {
+    if (fs.existsSync(TEMPLATE_FILE)) {
+      const template = fs.readFileSync(TEMPLATE_FILE, 'utf-8');
+      res.json({ template });
+    } else {
+      res.json({ template: '' });
+    }
+  } catch (err) {
+    console.error('Error reading template:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/template - Persists the active WhatsApp template to disk
+app.post('/api/template', (req, res) => {
+  const { template } = req.body;
+  try {
+    fs.writeFileSync(TEMPLATE_FILE, template || '', 'utf-8');
+    res.json({ success: true, message: 'Template saved successfully' });
+  } catch (err) {
+    console.error('Error saving template:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Helper function to send SSE messages
 function sendSSE(res, type, data) {
   res.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);

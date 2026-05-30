@@ -38,6 +38,28 @@ function getDuplicateLabels(lead, allLeads) {
   return uniqueSources.map(src => `<span class="count-badge" style="background: rgba(99, 102, 241, 0.08); color: var(--accent-text); border-color: rgba(99, 102, 241, 0.15); margin-left: 6px;">Sama di: ${src}</span>`).join('');
 }
 
+// Server-side persistent template syncing
+let templateSaveTimeout = null;
+function saveTemplateToServer(template) {
+  if (templateSaveTimeout) clearTimeout(templateSaveTimeout);
+  templateSaveTimeout = setTimeout(() => {
+    fetch('/api/template', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ template })
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        console.log('Template synced persistently to VPS server disk');
+      }
+    })
+    .catch(err => console.error('Error syncing template to server:', err));
+  }, 1000); // 1 second debounce
+}
+
 // Persistent Outreaching States
 let activeCrawlId = null; // Keeps track of current run filename on backend
 const defaultTemplate = "Halo *{name}*, saya melihat profil bisnis Anda di Google Maps. Apakah benar melayani jasa *{category}* di daerah *{address}*?";
@@ -175,6 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
     activeTemplate = e.target.value;
     localStorage.setItem('whatsapp_template', activeTemplate);
     renderOutreachList(scrapedLeads); // Real-time preview updates!
+    saveTemplateToServer(activeTemplate); // Sync persistently to server
   });
 
   // Template tag buttons: insert tag at cursor position
@@ -214,6 +237,18 @@ document.addEventListener('DOMContentLoaded', () => {
   if (matchingTabBtn) {
     matchingTabBtn.click();
   }
+
+  // Load saved template from server permanently on page load
+  fetch('/api/template')
+    .then(res => res.json())
+    .then(data => {
+      if (data.template) {
+        activeTemplate = data.template;
+        whatsappTemplate.value = activeTemplate;
+        renderOutreachList(scrapedLeads);
+      }
+    })
+    .catch(err => console.error('Error loading server template:', err));
 
   // Restore saved active crawl run on page load
   const savedCrawlId = localStorage.getItem('active_crawl_id');
