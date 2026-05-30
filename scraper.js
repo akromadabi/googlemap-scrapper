@@ -77,16 +77,23 @@ async function scrapeGoogleMaps(query, maxResults = 10, onProgress = null) {
       // Place links contain "/maps/place/" in their href
       const placeElements = await page.evaluate(() => {
         const links = Array.from(document.querySelectorAll('div[role="feed"] a[href*="/maps/place/"]'));
-        return links.map((link, index) => {
-          // Find the container parent that is clickable or has the text
+        const seenUrlsInFeed = new Set();
+        const feedResults = [];
+        
+        links.forEach((link, index) => {
+          const url = link.href;
+          if (seenUrlsInFeed.has(url)) return;
+          seenUrlsInFeed.add(url);
+          
           const container = link.closest('.Nv2PK') || link;
           const titleEl = container.querySelector('.qBF1Pd');
-          return {
+          feedResults.push({
             title: titleEl ? titleEl.textContent.trim() : 'Unknown Place',
-            url: link.href,
+            url: url,
             selectorIndex: index
-          };
+          });
         });
+        return feedResults;
       });
 
       console.log(`Found ${placeElements.length} place links in current view.`);

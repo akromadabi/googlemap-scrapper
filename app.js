@@ -5,6 +5,39 @@ let eventSource = null;
 let currentSortField = null;
 let currentSortOrder = 'asc'; // 'asc' or 'desc'
 
+// Robust WhatsApp number cleaner for Indonesia (+62)
+function formatWhatsAppNumber(phone) {
+  if (!phone) return '';
+  let cleaned = phone.replace(/[^0-9]/g, '');
+  if (cleaned.startsWith('0')) {
+    cleaned = '62' + cleaned.substring(1);
+  }
+  if (!cleaned.startsWith('62') && cleaned.length >= 9 && cleaned.length <= 13) {
+    cleaned = '62' + cleaned;
+  }
+  return cleaned;
+}
+
+// Generate badges for duplicate listings from other runs
+function getDuplicateLabels(lead, allLeads) {
+  if (!lead.phone) return '';
+  const cleanPhone = lead.phone.replace(/[^0-9]/g, '');
+  if (!cleanPhone) return '';
+  
+  const duplicates = allLeads.filter(l => 
+    l.id !== lead.id && 
+    l.phone && 
+    l.phone.replace(/[^0-9]/g, '') === cleanPhone
+  );
+  
+  if (duplicates.length === 0) return '';
+  
+  const uniqueSources = [...new Set(duplicates.map(d => d.sourceQuery || 'Scrape Baru').filter(Boolean))];
+  if (uniqueSources.length === 0) return '';
+  
+  return uniqueSources.map(src => `<span class="count-badge" style="background: rgba(99, 102, 241, 0.08); color: var(--accent-text); border-color: rgba(99, 102, 241, 0.15); margin-left: 6px;">Sama di: ${src}</span>`).join('');
+}
+
 // Persistent Outreaching States
 let activeCrawlId = null; // Keeps track of current run filename on backend
 const defaultTemplate = "Halo *{name}*, saya melihat profil bisnis Anda di Google Maps. Apakah benar melayani jasa *{category}* di daerah *{address}*?";
@@ -113,6 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       const targetTab = btn.dataset.tab;
+      localStorage.setItem('active_tab', targetTab); // SAVE ACTIVE TAB
       
       // Synchronize active state for both top and bottom buttons
       tabBtns.forEach(b => {
@@ -173,6 +207,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     renderOutreachList(filtered, true);
   });
+
+  // Restore saved active tab on page load
+  const savedTab = localStorage.getItem('active_tab') || 'database-tab';
+  const matchingTabBtn = document.querySelector(`.tab-btn[data-tab="${savedTab}"], .bottom-nav-btn[data-tab="${savedTab}"]`);
+  if (matchingTabBtn) {
+    matchingTabBtn.click();
+  }
+
+  // Restore saved active crawl run on page load
+  const savedCrawlId = localStorage.getItem('active_crawl_id');
+  if (savedCrawlId) {
+    loadHistoryRun(savedCrawlId, true);
+  }
 });
 
 // Helper: Update slider badge text
@@ -268,10 +315,12 @@ function renderTable(leads) {
         ? `<span class="rating-pill"><i class="fa-solid fa-star"></i> ${lead.rating.toFixed(1)}</span>`
         : `<span class="text-muted">—</span>`;
 
+      const dupLabels = getDuplicateLabels(lead, leads);
       row.innerHTML = `
         <td style="font-weight: 500; position: relative;">
           ${lead.name}
           ${lead.contacted ? `<span class="count-badge" style="background: rgba(16, 185, 129, 0.1); color: var(--accent-green); margin-left: 6px; border-color: rgba(16,185,129,0.2)">Sent (${typeof lead.contacted === 'number' ? lead.contacted : 1}x)</span>` : ''}
+          ${dupLabels}
         </td>
         <td>${lead.category ? `<span class="category-tag">${lead.category}</span>` : '<span class="text-muted">—</span>'}</td>
         <td class="text-center">${ratingHtml}</td>
@@ -298,13 +347,14 @@ function renderTable(leads) {
       const card = document.createElement('div');
       card.className = 'mobile-lead-card';
 
-      const cleanPhone = lead.phone ? lead.phone.replace(/[^0-9]/g, '') : '';
+      const cleanPhone = formatWhatsAppNumber(lead.phone);
       const textMessage = compileTemplate(activeTemplate, lead);
       const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(textMessage)}`;
+      const dupLabels = getDuplicateLabels(lead, leads);
 
       card.innerHTML = `
         <div class="mobile-lead-header">
-          <span class="mobile-lead-title">${lead.name}</span>
+          <span class="mobile-lead-title">${lead.name} ${dupLabels}</span>
           ${lead.category ? `<span class="mobile-lead-cat">${lead.category}</span>` : ''}
         </div>
         <div class="mobile-lead-meta">
@@ -412,13 +462,15 @@ function renderOutreachList(leads, isSearch = false) {
     card.className = 'prospect-card';
 
     const textMessage = compileTemplate(activeTemplate, lead);
-    const cleanPhone = lead.phone ? lead.phone.replace(/[^0-9]/g, '') : '';
+    const cleanPhone = formatWhatsAppNumber(lead.phone);
     const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(textMessage)}`;
+    const dupLabels = getDuplicateLabels(lead, leads);
 
     card.innerHTML = `
       <div class="prospect-info">
         <div class="prospect-name-row">
           <span class="prospect-name">${lead.name}</span>
+          ${dupLabels}
           ${lead.category ? `<span class="prospect-cat">${lead.category}</span>` : ''}
         </div>
         <div class="prospect-meta-row">
@@ -454,9 +506,15 @@ function renderOutreachList(leads, isSearch = false) {
 // Persistent duplicate prevention tracker
 function markLeadContacted(leadId) {
   let updatedCount = 1;
+  const targetLead = scrapedLeads.find(l => l.id === leadId);
+  if (!targetLead) return;
+  
+  const targetPhone = targetLead.phone ? targetLead.phone.replace(/[^0-9]/g, '') : '';
+  
   // 1. In-memory state update
   scrapedLeads = scrapedLeads.map(lead => {
-    if (lead.id === leadId) {
+    const isSamePhone = targetPhone && lead.phone && lead.phone.replace(/[^0-9]/g, '') === targetPhone;
+    if (lead.id === leadId || isSamePhone) {
       if (typeof lead.contacted === 'number') {
         lead.contacted += 1;
       } else if (lead.contacted === true) {
@@ -464,8 +522,10 @@ function markLeadContacted(leadId) {
       } else {
         lead.contacted = 1;
       }
-      updatedCount = lead.contacted;
-      writeLog(`Marked contacted: ${lead.name} (${updatedCount}x)`, 'system');
+      if (lead.id === leadId) {
+        updatedCount = lead.contacted;
+      }
+      writeLog(`Marked contacted: ${lead.name} (${lead.contacted}x)`, 'system');
     }
     return lead;
   });
@@ -476,23 +536,28 @@ function markLeadContacted(leadId) {
   renderTable(filteredLeads);
   renderOutreachList(filteredLeads);
 
-  // 3. Save persistently to backend folder
-  if (activeCrawlId) {
-    fetch(`/api/history/${activeCrawlId}/contact`, {
+  // 3. Save persistently to backend folder for ALL affected leads!
+  const affectedLeads = scrapedLeads.filter(lead => {
+    const isSamePhone = targetPhone && lead.phone && lead.phone.replace(/[^0-9]/g, '') === targetPhone;
+    return (lead.id === leadId || isSamePhone) && lead.sourceId;
+  });
+  
+  affectedLeads.forEach(lead => {
+    fetch(`/api/history/${lead.sourceId}/contact`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ leadId, contacted: updatedCount })
+      body: JSON.stringify({ leadId: lead.id, contacted: lead.contacted })
     })
     .then(res => res.json())
     .then(data => {
       if (data.success) {
-        console.log(`Saved contacted status (${updatedCount}x) to JSON crawl on disk: ${activeCrawlId}`);
+        console.log(`Saved contacted status (${lead.contacted}x) to JSON crawl ${lead.sourceId} on disk`);
       }
     })
     .catch(err => console.error('Error saving contacted status to disk:', err));
-  }
+  });
 }
 
 // Fetch saved histories catalog from backend
@@ -580,14 +645,19 @@ function deleteHistoryRun(id) {
 }
 
 // Load full crawl JSON from history
-function loadHistoryRun(id) {
+function loadHistoryRun(id, preventTabSwitch = false) {
   fetch(`/api/history/${id}`)
     .then(res => res.json())
     .then(data => {
       // 1. Load data to active memory
-      scrapedLeads = data.leads || [];
+      scrapedLeads = (data.leads || []).map(lead => {
+        lead.sourceId = data.id;
+        lead.sourceQuery = data.query;
+        return lead;
+      });
       filteredLeads = [...scrapedLeads];
       activeCrawlId = data.id;
+      localStorage.setItem('active_crawl_id', id); // Save active crawl id
 
       // 2. Synchronize controls inputs
       searchQueryInput.value = data.query;
@@ -609,9 +679,16 @@ function loadHistoryRun(id) {
       exportCsvBtn.disabled = false;
       exportJsonBtn.disabled = false;
 
-      // 4. Switch UI to Database Tab
-      const dbTabBtn = document.querySelector('[data-tab="database-tab"]');
-      dbTabBtn.click();
+      // 4. Switch UI to Database Tab if not prevented
+      if (!preventTabSwitch) {
+        const dbTabBtn = document.querySelector('[data-tab="database-tab"]');
+        if (dbTabBtn) dbTabBtn.click();
+      } else {
+        const currentTab = localStorage.getItem('active_tab') || 'database-tab';
+        if (currentTab === 'outreach-tab') {
+          renderOutreachList(scrapedLeads);
+        }
+      }
 
       // Show completed message in logs
       progressCard.classList.remove('hidden');
@@ -624,7 +701,9 @@ function loadHistoryRun(id) {
     })
     .catch(err => {
       console.error('Load history run error:', err);
-      alert('Failed to load saved search crawl.');
+      if (!preventTabSwitch) {
+        alert('Failed to load saved search crawl.');
+      }
     });
 }
 
@@ -675,6 +754,7 @@ function startScraping() {
       
       case 'progress':
         const { item, percent } = data;
+        item.sourceQuery = query; // Map source query on progress
         scrapedLeads.push(item);
         filteredLeads = [...scrapedLeads];
         
@@ -693,9 +773,14 @@ function startScraping() {
         writeLog(data.message, 'success');
         cleanupScrapeState();
         if (data.results && data.results.length > 0) {
-          scrapedLeads = data.results;
+          scrapedLeads = data.results.map(lead => {
+            lead.sourceId = data.fileId;
+            lead.sourceQuery = query;
+            return lead;
+          });
           filteredLeads = [...scrapedLeads];
           activeCrawlId = data.fileId; // Save active crawl file reference
+          localStorage.setItem('active_crawl_id', data.fileId); // Save active crawl id
           updateStats(scrapedLeads);
           renderTable(filteredLeads);
           exportCsvBtn.disabled = false;
