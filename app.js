@@ -4,6 +4,26 @@ let filteredLeads = [];
 let eventSource = null;
 let currentSortField = null;
 let currentSortOrder = 'asc'; // 'asc' or 'desc'
+let crossHistoryDuplicates = {}; // Global dictionary mapping phone -> duplicate crawls
+
+// Fetch duplicates dynamically across saved crawl files
+function fetchCrossHistoryDuplicates() {
+  fetch('/api/duplicates')
+    .then(res => res.json())
+    .then(data => {
+      crossHistoryDuplicates = data;
+      console.log('Cross-history duplicates successfully indexed:', Object.keys(data).length);
+      // Re-render views if leads are currently loaded to apply newly updated labels
+      if (scrapedLeads.length > 0) {
+        renderTable(filteredLeads);
+        const currentTab = localStorage.getItem('active_tab');
+        if (currentTab === 'outreach-tab') {
+          renderOutreachList(scrapedLeads);
+        }
+      }
+    })
+    .catch(err => console.error('Error fetching cross-history duplicates:', err));
+}
 
 // Robust WhatsApp number cleaner for Indonesia (+62)
 function formatWhatsAppNumber(phone) {
@@ -18,24 +38,33 @@ function formatWhatsAppNumber(phone) {
   return cleaned;
 }
 
-// Generate badges for duplicate listings from other runs
+// Generate badges for duplicate listings from other runs and cross-history crawls
 function getDuplicateLabels(lead, allLeads) {
   if (!lead.phone) return '';
   const cleanPhone = lead.phone.replace(/[^0-9]/g, '');
   if (!cleanPhone) return '';
   
-  const duplicates = allLeads.filter(l => 
+  // 1. Check local memory duplicates (within currently active results list)
+  const localDuplicates = allLeads.filter(l => 
     l.id !== lead.id && 
     l.phone && 
     l.phone.replace(/[^0-9]/g, '') === cleanPhone
   );
+  const localSources = localDuplicates.map(d => d.sourceQuery || 'Scrape Baru').filter(Boolean);
   
-  if (duplicates.length === 0) return '';
+  // 2. Check cross-history duplicates scanned across other saved crawl files
+  let crossSources = [];
+  if (crossHistoryDuplicates && crossHistoryDuplicates[cleanPhone]) {
+    const currentCrawlId = activeCrawlId || '';
+    const otherCrawlEntries = crossHistoryDuplicates[cleanPhone].filter(entry => entry.crawlId !== currentCrawlId);
+    crossSources = otherCrawlEntries.map(entry => entry.query);
+  }
   
-  const uniqueSources = [...new Set(duplicates.map(d => d.sourceQuery || 'Scrape Baru').filter(Boolean))];
-  if (uniqueSources.length === 0) return '';
+  // Merge and deduplicate all query sources
+  const allSources = [...new Set([...localSources, ...crossSources])];
+  if (allSources.length === 0) return '';
   
-  return uniqueSources.map(src => `<span class="count-badge" style="background: rgba(99, 102, 241, 0.08); color: var(--accent-text); border-color: rgba(99, 102, 241, 0.15); margin-left: 6px;">Sama di: ${src}</span>`).join('');
+  return allSources.map(src => `<span class="count-badge" style="background: rgba(99, 102, 241, 0.08); color: var(--accent-text); border-color: rgba(99, 102, 241, 0.15); margin-left: 6px;">Sama di: ${src}</span>`).join('');
 }
 
 // Server-side persistent template syncing
@@ -255,6 +284,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (savedCrawlId) {
     loadHistoryRun(savedCrawlId, true);
   }
+
+  // Pre-load cross-history duplicates mapping
+  fetchCrossHistoryDuplicates();
 });
 
 // Helper: Update slider badge text
@@ -666,6 +698,7 @@ function deleteHistoryRun(id) {
     if (data.success) {
       // Re-fetch the history list instantly
       fetchHistory();
+      fetchCrossHistoryDuplicates();
       if (activeCrawlId === id) {
         activeCrawlId = null;
       }
@@ -816,6 +849,7 @@ function startScraping() {
           filteredLeads = [...scrapedLeads];
           activeCrawlId = data.fileId; // Save active crawl file reference
           localStorage.setItem('active_crawl_id', data.fileId); // Save active crawl id
+          fetchCrossHistoryDuplicates(); // Load newly updated cross-history indexes
           updateStats(scrapedLeads);
           renderTable(filteredLeads);
           exportCsvBtn.disabled = false;

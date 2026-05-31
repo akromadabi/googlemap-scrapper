@@ -117,7 +117,62 @@ app.get('/api/history/:id', (req, res) => {
   }
 });
 
-// POST /api/history/:id/contact - Persists contacted tracking state to local crawl file
+// GET /api/duplicates - Aggregates cross-history duplicate listings by phone number
+app.get('/api/duplicates', (req, res) => {
+  try {
+    const files = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('crawl_') && f.endsWith('.json'));
+    const phoneToCrawls = {}; // cleanPhone -> Set of crawlIds
+    const phoneToLeads = {};  // cleanPhone -> Array of { leadId, name, query, crawlId, contacted }
+
+    // First pass: scan and group all lead phone numbers
+    files.forEach(file => {
+      const filePath = path.join(DATA_DIR, file);
+      try {
+        const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        const crawlId = content.id;
+        const query = content.query;
+        if (content.leads) {
+          content.leads.forEach(lead => {
+            if (lead.phone) {
+              const clean = lead.phone.replace(/[^0-9]/g, '');
+              if (clean && clean.length >= 9) {
+                if (!phoneToCrawls[clean]) {
+                  phoneToCrawls[clean] = new Set();
+                  phoneToLeads[clean] = [];
+                }
+                phoneToCrawls[clean].add(crawlId);
+                phoneToLeads[clean].push({
+                  leadId: lead.id,
+                  name: lead.name,
+                  query: query,
+                  crawlId: crawlId,
+                  contacted: lead.contacted || false
+                });
+              }
+            }
+          });
+        }
+      } catch (e) {
+        console.error(`Error parsing duplicate check file ${file}:`, e);
+      }
+    });
+
+    // Second pass: filter to keep only phone numbers that exist in 2 or more DIFFERENT crawls
+    const crossDuplicates = {};
+    for (const [phone, crawls] of Object.entries(phoneToCrawls)) {
+      if (crawls.size >= 2) {
+        crossDuplicates[phone] = phoneToLeads[phone];
+      }
+    }
+
+    res.json(crossDuplicates);
+  } catch (err) {
+    console.error('Error calculating duplicates:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/history/:id/contact - Persists contacted tracking state to local crawl file and auto-syncs duplicates
 app.post('/api/history/:id/contact', (req, res) => {
   const { id } = req.params;
   const { leadId, contacted } = req.body;
@@ -129,24 +184,56 @@ app.post('/api/history/:id/contact', (req, res) => {
 
   try {
     const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    let targetPhone = '';
     let updated = false;
 
     if (content.leads) {
       content.leads = content.leads.map(lead => {
         if (lead.id === leadId) {
           lead.contacted = contacted;
+          targetPhone = lead.phone ? lead.phone.replace(/[^0-9]/g, '') : '';
           updated = true;
         }
         return lead;
       });
     }
 
-    if (updated) {
-      fs.writeFileSync(filePath, JSON.stringify(content, null, 2));
-      res.json({ success: true, message: 'Contacted tracking state saved' });
-    } else {
-      res.status(404).json({ error: 'Lead ID not found in saved crawl' });
+    if (!updated) {
+      return res.status(404).json({ error: 'Lead ID not found in saved crawl' });
     }
+
+    // Save the primary file
+    fs.writeFileSync(filePath, JSON.stringify(content, null, 2));
+
+    // Cross-History Sync: If phone exists, update all other files sharing this phone number
+    if (targetPhone) {
+      const files = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('crawl_') && f.endsWith('.json') && f !== `crawl_${id}.json`);
+      files.forEach(file => {
+        const otherPath = path.join(DATA_DIR, file);
+        try {
+          const otherContent = JSON.parse(fs.readFileSync(otherPath, 'utf-8'));
+          let otherUpdated = false;
+          if (otherContent.leads) {
+            otherContent.leads = otherContent.leads.map(lead => {
+              const leadPhone = lead.phone ? lead.phone.replace(/[^0-9]/g, '') : '';
+              if (leadPhone && leadPhone === targetPhone) {
+                lead.contacted = contacted;
+                otherUpdated = true;
+              }
+              return lead;
+            });
+          }
+          if (otherUpdated) {
+            fs.writeFileSync(otherPath, JSON.stringify(otherContent, null, 2));
+            console.log(`Auto-synchronized contacted status (${contacted}x) in crawl file ${file}`);
+          }
+        } catch (err) {
+          console.error(`Error syncing duplicate in file ${file}:`, err);
+        }
+      });
+    }
+
+    res.json({ success: true, message: 'Contacted tracking state saved and synchronized across history' });
   } catch (err) {
     console.error('Error updating contacted status:', err);
     res.status(500).json({ error: err.message });
