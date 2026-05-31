@@ -174,6 +174,17 @@ let hideNoPhoneActive = false;
 
 // Initialize events
 document.addEventListener('DOMContentLoaded', () => {
+  // Collapsible Template Section Header toggle on mobile
+  const templateCard = document.getElementById('template-card');
+  const templateCardHeader = document.getElementById('template-card-header');
+  if (templateCardHeader && templateCard) {
+    templateCardHeader.addEventListener('click', () => {
+      if (window.innerWidth <= 800) {
+        templateCard.classList.toggle('expanded');
+      }
+    });
+  }
+
   // Synchronize range slider value and preset buttons
   maxResultsInput.addEventListener('input', (e) => {
     updateSliderLabel(e.target.value);

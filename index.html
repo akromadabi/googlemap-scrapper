@@ -231,25 +231,30 @@
       <!-- ============================================== -->
       <div id="outreach-tab" class="tab-content">
         <div class="outreach-layout">
-          <!-- WhatsApp Message Template Editor -->
-          <section class="template-section panel-card">
-            <h2><i class="fa-solid fa-message"></i> WhatsApp Template Editor</h2>
-            <p class="section-desc">Compose your message template. Use place tags to personalize each outreach automatically.</p>
-            
-            <div class="template-editor-wrapper">
-              <div class="tag-badges">
-                <button type="button" class="tag-badge-btn" data-tag="{name}">+ {name}</button>
-                <button type="button" class="tag-badge-btn" data-tag="{category}">+ {category}</button>
-                <button type="button" class="tag-badge-btn" data-tag="{address}">+ {address}</button>
-                <button type="button" class="tag-badge-btn" data-tag="{phone}">+ {phone}</button>
-                <button type="button" class="tag-badge-btn" data-tag="{website}">+ {website}</button>
-              </div>
-              <textarea id="whatsapp-template" placeholder="Enter message text..."></textarea>
+          <section class="template-section panel-card" id="template-card">
+            <div class="template-card-header" id="template-card-header">
+              <h2><i class="fa-solid fa-message"></i> WhatsApp Template Editor</h2>
+              <i class="fa-solid fa-chevron-down toggle-chevron mobile-only"></i>
             </div>
             
-            <div class="template-instruction-info">
-              <span class="info-tag"><i class="fa-solid fa-circle-info"></i> Info</span>
-              <p>Placeholders inside <code>{curly_brackets}</code> will automatically fetch details for each business before sending.</p>
+            <div class="template-card-body" id="template-card-body">
+              <p class="section-desc">Compose your message template. Use place tags to personalize each outreach automatically.</p>
+              
+              <div class="template-editor-wrapper">
+                <div class="tag-badges">
+                  <button type="button" class="tag-badge-btn" data-tag="{name}">+ {name}</button>
+                  <button type="button" class="tag-badge-btn" data-tag="{category}">+ {category}</button>
+                  <button type="button" class="tag-badge-btn" data-tag="{address}">+ {address}</button>
+                  <button type="button" class="tag-badge-btn" data-tag="{phone}">+ {phone}</button>
+                  <button type="button" class="tag-badge-btn" data-tag="{website}">+ {website}</button>
+                </div>
+                <textarea id="whatsapp-template" placeholder="Enter message text..."></textarea>
+              </div>
+              
+              <div class="template-instruction-info">
+                <span class="info-tag"><i class="fa-solid fa-circle-info"></i> Info</span>
+                <p>Placeholders inside <code>{curly_brackets}</code> will automatically fetch details for each business before sending.</p>
+              </div>
             </div>
           </section>
 

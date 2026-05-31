@@ -768,6 +768,23 @@ tr:hover:not(.empty-row-placeholder) {
   margin-bottom: 4px;
 }
 
+.template-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.toggle-chevron {
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease-out;
+}
+
+.template-section.expanded .toggle-chevron {
+  transform: rotate(180deg);
+}
+
 .template-editor-wrapper {
   display: flex;
   flex-direction: column;
@@ -1357,6 +1374,29 @@ tr:hover:not(.empty-row-placeholder) {
   .prospects-filters input {
     flex: 1 !important;
     width: 100% !important;
+  }
+
+  .template-section {
+    padding: 12px !important;
+  }
+  
+  .template-card-header {
+    cursor: pointer;
+    user-select: none;
+  }
+  
+  .template-card-body {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, margin-top 0.2s ease;
+  }
+  
+  .template-section.expanded .template-card-body {
+    max-height: 800px;
+    opacity: 1;
+    margin-top: 12px;
+    overflow: visible;
   }
 
   .search-filter-controls {
