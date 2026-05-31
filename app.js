@@ -51,7 +51,7 @@ function fetchCrossHistoryDuplicates() {
         renderTable(filteredLeads);
         const currentTab = localStorage.getItem('active_tab');
         if (currentTab === 'outreach-tab') {
-          renderOutreachList(scrapedLeads);
+          filterAndRenderOutreach();
         }
       }
     })
@@ -169,6 +169,8 @@ const tagBadgeBtns = document.querySelectorAll('.tag-badge-btn');
 const prospectsDeck = document.getElementById('prospects-deck');
 const outreachCountBadge = document.getElementById('outreach-count-badge');
 const outreachSearch = document.getElementById('outreach-search');
+const btnToggleNoPhone = document.getElementById('btn-toggle-no-phone');
+let hideNoPhoneActive = false;
 
 // Initialize events
 document.addEventListener('DOMContentLoaded', () => {
@@ -252,7 +254,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (targetTab === 'history-tab') {
         fetchHistory();
       } else if (targetTab === 'outreach-tab') {
-        renderOutreachList(scrapedLeads);
+        filterAndRenderOutreach();
       }
     });
   });
@@ -262,7 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
   whatsappTemplate.addEventListener('input', (e) => {
     activeTemplate = e.target.value;
     localStorage.setItem('whatsapp_template', activeTemplate);
-    renderOutreachList(scrapedLeads); // Real-time preview updates!
+    filterAndRenderOutreach(); // Real-time preview updates!
     saveTemplateToServer(activeTemplate); // Sync persistently to server
   });
 
@@ -280,22 +282,29 @@ document.addEventListener('DOMContentLoaded', () => {
       // Update template content state
       activeTemplate = whatsappTemplate.value;
       localStorage.setItem('whatsapp_template', activeTemplate);
-      renderOutreachList(scrapedLeads);
+      filterAndRenderOutreach();
     });
   });
 
   // Outreach Search Input filtering
-  outreachSearch.addEventListener('input', (e) => {
-    const q = e.target.value.toLowerCase();
-    const filtered = scrapedLeads.filter(lead => {
-      return (
-        (lead.name && lead.name.toLowerCase().includes(q)) ||
-        (lead.category && lead.category.toLowerCase().includes(q)) ||
-        (lead.phone && lead.phone.includes(q))
-      );
-    });
-    renderOutreachList(filtered, true);
+  outreachSearch.addEventListener('input', () => {
+    filterAndRenderOutreach();
   });
+
+  // Toggle Hide No Phone leads
+  if (btnToggleNoPhone) {
+    btnToggleNoPhone.addEventListener('click', () => {
+      hideNoPhoneActive = !hideNoPhoneActive;
+      btnToggleNoPhone.classList.toggle('active', hideNoPhoneActive);
+      
+      const icon = btnToggleNoPhone.querySelector('i');
+      if (icon) {
+        icon.className = hideNoPhoneActive ? 'fa-solid fa-phone' : 'fa-solid fa-phone-slash';
+      }
+      
+      filterAndRenderOutreach();
+    });
+  }
 
   // Restore saved active tab on page load
   const savedTab = localStorage.getItem('active_tab') || 'database-tab';
@@ -311,7 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.template) {
         activeTemplate = data.template;
         whatsappTemplate.value = activeTemplate;
-        renderOutreachList(scrapedLeads);
+        filterAndRenderOutreach();
       }
     })
     .catch(err => console.error('Error loading server template:', err));
@@ -602,6 +611,25 @@ function handleSort(field) {
   renderTable(filteredLeads);
 }
 
+// Filter prospects list based on search query and No Phone toggles
+function filterAndRenderOutreach() {
+  const q = outreachSearch.value.toLowerCase().trim();
+  const filtered = scrapedLeads.filter(lead => {
+    // 1. If hideNoPhoneActive is enabled, discard leads without phone numbers
+    if (hideNoPhoneActive && !lead.phone) {
+      return false;
+    }
+    // 2. Search query filter
+    if (!q) return true;
+    return (
+      (lead.name && lead.name.toLowerCase().includes(q)) ||
+      (lead.category && lead.category.toLowerCase().includes(q)) ||
+      (lead.phone && lead.phone.includes(q))
+    );
+  });
+  renderOutreachList(filtered, q !== '' || hideNoPhoneActive);
+}
+
 // Render dynamic outreach deck for WhatsApp panel
 function renderOutreachList(leads, isSearch = false) {
   prospectsDeck.innerHTML = '';
@@ -694,7 +722,7 @@ function markLeadContacted(leadId) {
 
   // 2. Refresh lists row-by-row & card-by-card instantly!
   renderTable(filteredLeads);
-  renderOutreachList(filteredLeads);
+  filterAndRenderOutreach();
 
   // 3. Save persistently to backend folder for ALL affected leads!
   const affectedLeads = scrapedLeads.filter(lead => {
@@ -858,7 +886,7 @@ function loadHistoryRun(id, preventTabSwitch = false) {
       } else {
         const currentTab = localStorage.getItem('active_tab') || 'database-tab';
         if (currentTab === 'outreach-tab') {
-          renderOutreachList(scrapedLeads);
+          filterAndRenderOutreach();
         }
       }
 

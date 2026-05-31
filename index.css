@@ -856,6 +856,41 @@ tr:hover:not(.empty-row-placeholder) {
   gap: 8px;
 }
 
+.prospects-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-toggle-no-phone {
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-muted);
+  color: var(--text-muted);
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-family);
+  font-weight: 600;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: var(--transition);
+}
+
+.btn-toggle-no-phone:hover {
+  border-color: var(--accent-text);
+  color: var(--text-main);
+  background-color: #ffffff;
+}
+
+.btn-toggle-no-phone.active {
+  background-color: rgba(99, 102, 241, 0.08);
+  color: var(--accent-text);
+  border-color: var(--accent-text);
+}
+
 .prospects-filters input {
   background-color: var(--bg-input);
   border: 1px solid var(--border-muted);
@@ -866,6 +901,7 @@ tr:hover:not(.empty-row-placeholder) {
   color: var(--text-main);
   outline: none;
   width: 200px;
+  transition: var(--transition);
 }
 
 .prospects-filters input:focus {
