@@ -6,6 +6,39 @@ let currentSortField = null;
 let currentSortOrder = 'asc'; // 'asc' or 'desc'
 let crossHistoryDuplicates = {}; // Global dictionary mapping phone -> duplicate crawls
 
+// Clean PUA characters from text (removes broken Google Maps glyphed square icons)
+function cleanPUA(str) {
+  if (!str) return '';
+  return str.replace(/[\uE000-\uF8FF]/g, '').trim();
+}
+
+// Get platform-specific category badges with icons and themes
+function getCategoryBadge(categoryText) {
+  if (!categoryText) return '<span class="text-muted">—</span>';
+  
+  const textLower = categoryText.toLowerCase().trim();
+  
+  // Instagram
+  if (textLower.includes('instagram')) {
+    return `<span class="category-tag category-ig"><i class="fa-brands fa-instagram"></i> IG</span>`;
+  }
+  // TikTok
+  if (textLower.includes('tiktok')) {
+    return `<span class="category-tag category-tiktok"><i class="fa-brands fa-tiktok"></i> TikTok</span>`;
+  }
+  // Facebook
+  if (textLower.includes('facebook')) {
+    return `<span class="category-tag category-fb"><i class="fa-brands fa-facebook"></i> FB</span>`;
+  }
+  // Google Maps general
+  if (textLower.includes('gmaps') || textLower.includes('google maps') || textLower.includes('g-maps')) {
+    return `<span class="category-tag category-gmaps"><i class="fa-solid fa-map-location-dot"></i> GMaps</span>`;
+  }
+  
+  // Default fallback (standard Google Maps business categories like "Coffee Shop")
+  return `<span class="category-tag category-gmaps"><i class="fa-solid fa-map-location-dot"></i> ${categoryText}</span>`;
+}
+
 // Fetch duplicates dynamically across saved crawl files
 function fetchCrossHistoryDuplicates() {
   fetch('/api/duplicates')
@@ -64,7 +97,7 @@ function getDuplicateLabels(lead, allLeads) {
   const allSources = [...new Set([...localSources, ...crossSources])];
   if (allSources.length === 0) return '';
   
-  return allSources.map(src => `<span class="count-badge" style="background: rgba(99, 102, 241, 0.08); color: var(--accent-text); border-color: rgba(99, 102, 241, 0.15); margin-left: 6px;">Sama di: ${src}</span>`).join('');
+  return allSources.map(src => `<span class="dup-badge" title="Sama dengan pencarian: ${src}"><i class="fa-solid fa-copy"></i> ${src}</span>`).join('');
 }
 
 // Server-side persistent template syncing
@@ -291,6 +324,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Pre-load cross-history duplicates mapping
   fetchCrossHistoryDuplicates();
+
+  // Custom Dropdown Targets Toggle Panel
+  const dropdownTriggerBtn = document.getElementById('dropdown-trigger-btn');
+  const dropdownCheckboxPanel = document.getElementById('dropdown-checkbox-panel');
+  const dropdownSelectedText = document.getElementById('dropdown-selected-text');
+  const sourceCheckboxes = document.querySelectorAll('.source-checkbox');
+
+  function updateDropdownLabel() {
+    const checked = Array.from(document.querySelectorAll('.source-checkbox:checked'));
+    if (checked.length === 0) {
+      dropdownSelectedText.textContent = 'Pilih Sumber';
+    } else if (checked.length === sourceCheckboxes.length) {
+      dropdownSelectedText.textContent = `Semua Sumber (${checked.length})`;
+    } else {
+      const labels = checked.map(cb => {
+        const val = cb.value;
+        if (val === 'gmaps') return 'G-Maps';
+        if (val === 'instagram') return 'Instagram';
+        if (val === 'tiktok') return 'TikTok';
+        if (val === 'facebook') return 'Facebook';
+        return val;
+      });
+      dropdownSelectedText.textContent = labels.join(', ');
+    }
+  }
+
+  if (dropdownTriggerBtn && dropdownCheckboxPanel) {
+    dropdownTriggerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdownCheckboxPanel.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!dropdownCheckboxPanel.classList.contains('hidden') && !e.target.closest('#targets-dropdown')) {
+        dropdownCheckboxPanel.classList.add('hidden');
+      }
+    });
+
+    sourceCheckboxes.forEach(cb => {
+      cb.addEventListener('change', updateDropdownLabel);
+    });
+
+    updateDropdownLabel();
+  }
 });
 
 // Helper: Update slider badge text
@@ -374,12 +451,17 @@ function renderTable(leads) {
     leads.forEach(lead => {
       const row = document.createElement('tr');
       
+      const nameCleaned = cleanPUA(lead.name);
+      const categoryCleaned = cleanPUA(lead.category);
+      const phoneCleaned = cleanPUA(lead.phone);
+      const addressCleaned = cleanPUA(lead.address);
+      
       const websiteHtml = lead.website 
         ? `<a href="${lead.website}" target="_blank" class="website-btn"><i class="fa-solid fa-arrow-up-right-from-square"></i> Visit</a>`
         : `<span class="text-muted">—</span>`;
 
-      const phoneHtml = lead.phone 
-        ? `<a href="tel:${lead.phone}" class="phone-link">${lead.phone}</a>`
+      const phoneHtml = phoneCleaned 
+        ? `<a href="tel:${phoneCleaned}" class="phone-link">${phoneCleaned}</a>`
         : `<span class="text-muted">—</span>`;
 
       const ratingHtml = lead.rating 
@@ -388,17 +470,19 @@ function renderTable(leads) {
 
       const dupLabels = getDuplicateLabels(lead, leads);
       row.innerHTML = `
-        <td style="font-weight: 500; position: relative;">
-          ${lead.name}
-          ${lead.contacted ? `<span class="count-badge" style="background: rgba(16, 185, 129, 0.1); color: var(--accent-green); margin-left: 6px; border-color: rgba(16,185,129,0.2)">Sent (${typeof lead.contacted === 'number' ? lead.contacted : 1}x)</span>` : ''}
-          ${dupLabels}
+        <td>
+          <div class="lead-name-container">
+            <span class="lead-name-text">${nameCleaned}</span>
+            ${lead.contacted ? `<span class="count-badge" style="background: rgba(16, 185, 129, 0.1); color: var(--accent-green); border-color: rgba(16,185,129,0.2)">Sent (${typeof lead.contacted === 'number' ? lead.contacted : 1}x)</span>` : ''}
+            ${dupLabels ? `<div class="lead-badges-row">${dupLabels}</div>` : ''}
+          </div>
         </td>
-        <td>${lead.category ? `<span class="category-tag">${lead.category}</span>` : '<span class="text-muted">—</span>'}</td>
+        <td>${getCategoryBadge(categoryCleaned)}</td>
         <td class="text-center">${ratingHtml}</td>
         <td class="text-center reviews-count">${lead.reviewsCount || 0}</td>
         <td>${phoneHtml}</td>
         <td>${websiteHtml}</td>
-        <td><div class="address-text" title="${lead.address || ''}">${lead.address || '<span class="text-muted">—</span>'}</div></td>
+        <td><div class="address-text" title="${addressCleaned}">${addressCleaned || '<span class="text-muted">—</span>'}</div></td>
       `;
       tableBody.appendChild(row);
     });
@@ -418,31 +502,36 @@ function renderTable(leads) {
       const card = document.createElement('div');
       card.className = 'mobile-lead-card';
 
-      const cleanPhone = formatWhatsAppNumber(lead.phone);
-      const textMessage = compileTemplate(activeTemplate, lead);
+      const nameCleaned = cleanPUA(lead.name);
+      const categoryCleaned = cleanPUA(lead.category);
+      const phoneCleaned = cleanPUA(lead.phone);
+      const addressCleaned = cleanPUA(lead.address);
+
+      const cleanPhone = formatWhatsAppNumber(phoneCleaned);
+      const textMessage = compileTemplate(activeTemplate, { ...lead, name: nameCleaned, category: categoryCleaned, address: addressCleaned, phone: phoneCleaned });
       const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(textMessage)}`;
       const dupLabels = getDuplicateLabels(lead, leads);
 
       card.innerHTML = `
         <div class="mobile-lead-header">
-          <span class="mobile-lead-title">${lead.name} ${dupLabels}</span>
-          ${lead.category ? `<span class="mobile-lead-cat">${lead.category}</span>` : ''}
+          <span class="mobile-lead-title">${nameCleaned} ${dupLabels}</span>
+          ${categoryCleaned ? getCategoryBadge(categoryCleaned) : ''}
         </div>
         <div class="mobile-lead-meta">
           ${lead.rating ? `<span class="rating-pill"><i class="fa-solid fa-star"></i> ${lead.rating.toFixed(1)}</span>` : ''}
           <span class="reviews-count">(${lead.reviewsCount || 0} reviews)</span>
         </div>
-        <div class="mobile-lead-address">${lead.address || 'No address details'}</div>
+        <div class="mobile-lead-address">${addressCleaned || 'No address details'}</div>
         <div class="mobile-lead-actions">
           <div class="mobile-lead-links">
             <a href="${lead.website || '#'}" target="_blank" class="mobile-action-btn ${lead.website ? '' : 'disabled'}" title="Website">
               <i class="fa-solid fa-globe"></i>
             </a>
-            <a href="tel:${lead.phone || ''}" class="mobile-action-btn ${lead.phone ? '' : 'disabled'}" title="Call">
+            <a href="tel:${phoneCleaned || ''}" class="mobile-action-btn ${phoneCleaned ? '' : 'disabled'}" title="Call">
               <i class="fa-solid fa-phone"></i>
             </a>
           </div>
-          ${lead.phone ? `
+          ${phoneCleaned ? `
             <a href="${waUrl}" target="_blank" class="mobile-wa-btn ${lead.contacted ? 'contacted' : ''}" data-id="${lead.id}">
               <i class="fa-brands fa-whatsapp"></i> ${lead.contacted ? `Sudah di-WA (${typeof lead.contacted === 'number' ? lead.contacted : 1}x)` : 'Kirim WA'}
             </a>
@@ -656,12 +745,23 @@ function fetchHistory() {
 
         const dateStr = new Date(item.timestamp).toLocaleString();
 
+        // Build premium platform icons tag elements
+        const platformIcons = (item.platforms || ['gmaps']).map(p => {
+          if (p === 'instagram') return `<span class="platform-icon-tag bg-ig" title="Instagram"><i class="fa-brands fa-instagram"></i></span>`;
+          if (p === 'tiktok') return `<span class="platform-icon-tag bg-tiktok" title="TikTok"><i class="fa-brands fa-tiktok"></i></span>`;
+          if (p === 'facebook') return `<span class="platform-icon-tag bg-fb" title="Facebook"><i class="fa-brands fa-facebook"></i></span>`;
+          return `<span class="platform-icon-tag bg-gmaps" title="G-Maps"><i class="fa-solid fa-map-location-dot"></i></span>`;
+        }).join('');
+
         row.innerHTML = `
           <div class="history-item-info">
             <span class="history-query">${item.query}</span>
             <div class="history-meta">
               <span><i class="fa-solid fa-calendar"></i> ${dateStr}</span>
               <span><i class="fa-solid fa-address-book"></i> ${item.count} Leads</span>
+              <span class="history-platforms">
+                ${platformIcons}
+              </span>
             </div>
           </div>
           <div class="history-item-actions">

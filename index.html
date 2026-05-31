@@ -11,7 +11,7 @@
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Vanilla CSS Stylesheet with Cache Busting -->
-  <link rel="stylesheet" href="index.css?v=1.4">
+  <link rel="stylesheet" href="index.css?v=1.6">
 </head>
 <body>
   <div class="app-container">
@@ -63,27 +63,33 @@
 
                 <div class="input-group">
                   <label>Search Targets (Pilih Sumber)</label>
-                  <div class="checkbox-grid">
-                    <label class="checkbox-wrapper">
-                      <input type="checkbox" class="source-checkbox" value="gmaps" checked>
-                      <span class="checkbox-custom"><i class="fa-solid fa-check"></i></span>
-                      <span class="checkbox-label"><i class="fa-solid fa-map-location-dot"></i> G-Maps</span>
-                    </label>
-                    <label class="checkbox-wrapper">
-                      <input type="checkbox" class="source-checkbox" value="instagram">
-                      <span class="checkbox-custom"><i class="fa-solid fa-check"></i></span>
-                      <span class="checkbox-label"><i class="fa-brands fa-instagram"></i> Instagram</span>
-                    </label>
-                    <label class="checkbox-wrapper">
-                      <input type="checkbox" class="source-checkbox" value="tiktok">
-                      <span class="checkbox-custom"><i class="fa-solid fa-check"></i></span>
-                      <span class="checkbox-label"><i class="fa-brands fa-tiktok"></i> TikTok</span>
-                    </label>
-                    <label class="checkbox-wrapper">
-                      <input type="checkbox" class="source-checkbox" value="facebook">
-                      <span class="checkbox-custom"><i class="fa-solid fa-check"></i></span>
-                      <span class="checkbox-label"><i class="fa-brands fa-facebook"></i> Facebook</span>
-                    </label>
+                  <div class="custom-dropdown" id="targets-dropdown">
+                    <button type="button" class="dropdown-trigger" id="dropdown-trigger-btn">
+                      <span id="dropdown-selected-text">G-Maps</span>
+                      <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                    <div class="dropdown-panel hidden" id="dropdown-checkbox-panel">
+                      <label class="dropdown-item">
+                        <input type="checkbox" class="source-checkbox" value="gmaps" checked>
+                        <span class="checkbox-custom-sml"><i class="fa-solid fa-check"></i></span>
+                        <span class="dropdown-item-label"><i class="fa-solid fa-map-location-dot font-sml-icon"></i> G-Maps</span>
+                      </label>
+                      <label class="dropdown-item">
+                        <input type="checkbox" class="source-checkbox" value="instagram">
+                        <span class="checkbox-custom-sml"><i class="fa-solid fa-check"></i></span>
+                        <span class="dropdown-item-label"><i class="fa-brands fa-instagram font-sml-icon"></i> Instagram</span>
+                      </label>
+                      <label class="dropdown-item">
+                        <input type="checkbox" class="source-checkbox" value="tiktok">
+                        <span class="checkbox-custom-sml"><i class="fa-solid fa-check"></i></span>
+                        <span class="dropdown-item-label"><i class="fa-brands fa-tiktok font-sml-icon"></i> TikTok</span>
+                      </label>
+                      <label class="dropdown-item">
+                        <input type="checkbox" class="source-checkbox" value="facebook">
+                        <span class="checkbox-custom-sml"><i class="fa-solid fa-check"></i></span>
+                        <span class="dropdown-item-label"><i class="fa-brands fa-facebook font-sml-icon"></i> Facebook</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
 
@@ -309,6 +315,6 @@
   </nav>
 
   <!-- Main script with Cache Busting -->
-  <script src="app.js?v=1.4"></script>
+  <script src="app.js?v=1.6"></script>
 </body>
 </html>

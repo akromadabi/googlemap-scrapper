@@ -26,11 +26,13 @@ async function scrapeGoogleMaps(query, maxResults = 10, onProgress = null) {
   
   const browser = await puppeteer.launch({
     headless: "new",
+    ignoreHTTPSErrors: true,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--window-size=1280,800'
+      '--window-size=1280,800',
+      '--ignore-certificate-errors'
     ]
   });
 
@@ -324,16 +326,24 @@ async function scrapeSocialMedia(query, source, maxResults = 10, onProgress = nu
   
   const browser = await puppeteer.launch({
     headless: "new",
+    ignoreHTTPSErrors: true,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--window-size=1280,800'
+      '--window-size=1280,800',
+      '--ignore-certificate-errors'
     ]
   });
 
   const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 800 });
+
+  // Set real desktop User-Agent to avoid robot alerts
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+  await page.setExtraHTTPHeaders({
+    'Accept-Language': 'en-US,en;q=0.9,id;q=0.8'
+  });
 
   try {
     // Map source type to Google search query dork
@@ -357,10 +367,61 @@ async function scrapeSocialMedia(query, source, maxResults = 10, onProgress = nu
     // Add &num=100 query parameter to request up to 100 organic Google search results on a single page
     const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(fullQuery)}&num=${Math.max(20, maxResults)}`;
     
-    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    // Wait for search results container
-    await page.waitForSelector('div.g, .MjjYed, .kvH3ic', { timeout: 15000 });
+    // Handle Google Consent Page if it appears
+    try {
+      const consentButtonSelector = 'button#L2AGLb, button#W0wltb, form[action*="consent"] button';
+      const hasConsent = await page.evaluate((sel) => {
+        const btn = document.querySelector(sel);
+        if (btn) return true;
+        const buttons = Array.from(document.querySelectorAll('button'));
+        return buttons.some(b => {
+          const txt = b.textContent.toLowerCase();
+          return txt.includes('accept all') || txt.includes('agree') || txt.includes('setuju') || txt.includes('terima semua');
+        });
+      }, consentButtonSelector);
+
+      if (hasConsent) {
+        console.log("Google consent dialog detected. Clicking accept button...");
+        await page.evaluate(() => {
+          const btn = document.querySelector('button#L2AGLb');
+          if (btn) {
+            btn.click();
+            return;
+          }
+          const buttons = Array.from(document.querySelectorAll('button'));
+          const target = buttons.find(b => {
+            const txt = b.textContent.toLowerCase();
+            return txt.includes('accept all') || txt.includes('agree') || txt.includes('setuju') || txt.includes('terima semua');
+          });
+          if (target) target.click();
+        });
+        // Wait for search results container page load
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
+      }
+    } catch (e) {
+      console.log("No consent screen encountered or failed to click:", e.message);
+    }
+
+    // Wait for search results container using a fallback chain
+    const resultSelectors = ['div.g', '.MjjYed', '.kvH3ic', '#search', '#rso'];
+    let foundSelector = null;
+    for (const sel of resultSelectors) {
+      try {
+        await page.waitForSelector(sel, { timeout: 3500 });
+        foundSelector = sel;
+        break;
+      } catch (err) {}
+    }
+
+    if (!foundSelector) {
+      const bodyText = await page.evaluate(() => document.body.innerText);
+      if (bodyText.includes('detected unusual traffic') || bodyText.includes('lalu lintas yang tidak biasa')) {
+        throw new Error("Google blocked this request with a CAPTCHA. Please try G-Maps or try again later.");
+      }
+      throw new Error("Search results selector timed out. Google search layout blocked or changed.");
+    }
 
     const rawResults = await page.evaluate((source) => {
       const items = [];
@@ -463,10 +524,188 @@ async function scrapeSocialMedia(query, source, maxResults = 10, onProgress = nu
     return results;
 
   } catch (err) {
-    console.error("Social media Google scrape error:", err);
-    if (browser) await browser.close();
-    throw err;
+    console.error("Google search dork failed or blocked. Trying Yahoo Search fallback...", err.message);
+    try {
+      // Get category definition based on source
+      let category = '';
+      if (source === 'instagram') category = 'Instagram Profile';
+      else if (source === 'tiktok') category = 'TikTok Account';
+      else if (source === 'facebook') category = 'Facebook Page';
+      else category = `${source} Account`;
+
+      const yahooResults = await scrapeSocialMediaViaSearchEngine(page, query, source, maxResults, category, onProgress, 'yahoo');
+      await browser.close();
+      return yahooResults;
+    } catch (fallbackErr) {
+      console.error("Yahoo fallback search failed. Trying AOL Search...", fallbackErr.message);
+      try {
+        const aolResults = await scrapeSocialMediaViaSearchEngine(page, query, source, maxResults, category, onProgress, 'aol');
+        await browser.close();
+        return aolResults;
+      } catch (aolErr) {
+        console.error("AOL search also failed:", aolErr.message);
+        if (browser) await browser.close();
+        throw new Error(`Google Search blocked (${err.message}). Yahoo fallback error: ${fallbackErr.message}. AOL error: ${aolErr.message}`);
+      }
+    }
   }
+}
+
+/**
+ * Fallback social search scraper using Yahoo Search or AOL Search (Highly stable, lightweight, no CAPTCHAs, bypasses ISP blocks)
+ */
+async function scrapeSocialMediaViaSearchEngine(page, query, source, maxResults, category, onProgress, engine = 'yahoo') {
+  const isYahoo = engine === 'yahoo';
+  const engineName = isYahoo ? 'Yahoo' : 'AOL';
+  const baseUrl = isYahoo ? 'https://search.yahoo.com/search' : 'https://search.aol.com/aol/search';
+  
+  console.log(`Starting ${engineName} Search fallback for: "${source}" | Query: "${query}" (Target: ${maxResults})`);
+  
+  let domainDork = '';
+  if (source === 'instagram') {
+    domainDork = 'site:instagram.com';
+  } else if (source === 'tiktok') {
+    domainDork = 'site:tiktok.com';
+  } else if (source === 'facebook') {
+    domainDork = 'site:facebook.com';
+  } else {
+    domainDork = `site:${source}.com`;
+  }
+
+  // Use the site: prefix and the query terms directly (without quotes)
+  const fullQuery = `${domainDork} ${query}`;
+  const searchUrl = `${baseUrl}?q=${encodeURIComponent(fullQuery)}`;
+  
+  await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+
+  // Wait for result items wrapper or check for CAPTCHA/No results
+  // Yahoo and AOL result items typically have class .algo
+  const resultSelectors = ['.algo', '#web ol li', '.SearchResults', '.compTitle'];
+  let foundSelector = null;
+  for (const sel of resultSelectors) {
+    try {
+      await page.waitForSelector(sel, { timeout: 8000 });
+      foundSelector = sel;
+      break;
+    } catch (err) {}
+  }
+
+  if (!foundSelector) {
+    // Check if "We did not find results for" or "No results found" is present
+    const bodyText = await page.evaluate(() => document.body.innerText);
+    if (bodyText.includes('We did not find results') || bodyText.includes('tidak menemukan hasil') || bodyText.includes('No search results')) {
+      console.log(`${engineName} Search returned no results.`);
+      return [];
+    }
+    throw new Error(`${engineName} search results selector timed out.`);
+  }
+
+  const rawResults = await page.evaluate((source) => {
+    const items = [];
+    const cards = Array.from(document.querySelectorAll('.algo'));
+    
+    cards.forEach(card => {
+      // Find title link element inside Yahoo/AOL card (usually inside .compTitle a)
+      const linkEl = card.querySelector('div.compTitle a, a[data-matarget="algo"]');
+      if (!linkEl) return;
+      
+      const url = linkEl.href;
+      if (!url) return;
+
+      // Double-check platform domain alignment
+      if (source === 'instagram' && !url.includes('instagram.com')) return;
+      if (source === 'tiktok' && !url.includes('tiktok.com')) return;
+      if (source === 'facebook' && !url.includes('facebook.com')) return;
+
+      const titleEl = card.querySelector('h3, .title');
+      const name = titleEl ? titleEl.textContent.trim() : '';
+      if (!name) return;
+
+      const snippetEl = card.querySelector('.compText, .compText p, .res-snippet');
+      const snippet = snippetEl ? snippetEl.textContent.trim() : '';
+
+      items.push({
+        name,
+        url,
+        snippet
+      });
+    });
+    return items;
+  }, source);
+
+  console.log(`${engineName} parsed ${rawResults.length} profile listings.`);
+
+  const results = [];
+  const seenUrls = new Set();
+
+  const extractContacts = (text) => {
+    const phoneRegex = /(\+?62|0)[2-9]\d{1,4}[-.\s]?\d{3,4}[-.\s]?\d{3,5}/g;
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+    const phoneMatches = text.match(phoneRegex);
+    const emailMatches = text.match(emailRegex);
+
+    let phone = '';
+    if (phoneMatches) {
+      const validPhones = phoneMatches.map(p => p.replace(/[-\s.()]/g, '')).filter(p => p.length >= 9 && p.length <= 15);
+      if (validPhones.length > 0) {
+        phone = phoneMatches[phoneMatches.map(p => p.replace(/[-\s.()]/g, '')).indexOf(validPhones[0])];
+      }
+    }
+
+    const email = emailMatches ? emailMatches[0] : '';
+    return { phone, email };
+  };
+
+  for (const item of rawResults) {
+    if (results.length >= maxResults) break;
+    if (seenUrls.has(item.url)) continue;
+    seenUrls.add(item.url);
+
+    const contacts = extractContacts(`${item.name} ${item.snippet}`);
+
+    // Format profile name clean
+    let nameClean = item.name;
+    if (source === 'instagram') {
+      nameClean = nameClean.split('(@')[0].split('• Instagram')[0].trim();
+    } else if (source === 'tiktok') {
+      nameClean = nameClean.split('| TikTok')[0].split('on TikTok')[0].trim();
+    } else if (source === 'facebook') {
+      nameClean = nameClean.split('| Facebook')[0].split('- Home | Facebook')[0].trim();
+    }
+
+    // Helper to generate deterministic ID like Maps scraper
+    let hash = 0;
+    for (let i = 0; i < item.url.length; i++) {
+      const char = item.url.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash |= 0;
+    }
+    const id = 'place_' + Math.abs(hash).toString(36);
+
+    const details = {
+      id: id,
+      name: nameClean || item.name,
+      rating: null,
+      reviewsCount: 0,
+      category: category,
+      address: contacts.email ? `Email: ${contacts.email} | Bio: ${item.snippet}` : `Bio: ${item.snippet}`,
+      website: item.url,
+      phone: contacts.phone,
+      hours: '',
+      url: item.url,
+      contacted: false
+    };
+
+    results.push(details);
+
+    if (onProgress) {
+      const progressPercent = Math.min(100, Math.round((results.length / maxResults) * 100));
+      onProgress({ ...details, query: query }, progressPercent);
+    }
+  }
+
+  return results;
 }
 
 module.exports = { scrapeGoogleMaps, scrapeSocialMedia };

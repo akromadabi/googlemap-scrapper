@@ -133,11 +133,22 @@ app.get('/api/history', (req, res) => {
     const history = files.map(file => {
       const filePath = path.join(DATA_DIR, file);
       const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      
+      // Determine unique sourcePlatform tags used in this crawl
+      let platforms = ['gmaps'];
+      if (content.leads && Array.isArray(content.leads)) {
+        const uniquePlats = [...new Set(content.leads.map(l => l.sourcePlatform || 'gmaps'))];
+        if (uniquePlats.length > 0) {
+          platforms = uniquePlats;
+        }
+      }
+
       return {
         id: content.id,
         query: content.query,
         timestamp: content.timestamp,
         count: content.leads ? content.leads.length : 0,
+        platforms: platforms,
         filename: file
       };
     });
