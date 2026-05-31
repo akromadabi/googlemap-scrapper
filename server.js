@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const { scrapeGoogleMaps } = require('./scraper');
+const { scrapeGoogleMaps, scrapeSocialMedia } = require('./scraper');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,10 +18,13 @@ if (!fs.existsSync(DATA_DIR)) {
 // Serve static files from root directory
 app.use(express.static(__dirname));
 
-// SSE Endpoint for Google Maps Scraping
+// SSE Endpoint for Google Maps & Social Media Scraping
 app.get('/api/scrape', async (req, res) => {
-  const { query, max } = req.query;
+  const { query, max, sources } = req.query;
   const maxResults = parseInt(max) || 10;
+  
+  // Parse sources from query, default to gmaps if empty
+  const selectedSources = sources ? sources.split(',').filter(Boolean) : ['gmaps'];
 
   if (!query) {
     return res.status(400).json({ error: 'Query parameter is required' });
@@ -34,27 +37,73 @@ app.get('/api/scrape', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.flushHeaders();
 
-  console.log(`Received SSE scrape request: "${query}" (max: ${maxResults})`);
+  console.log(`Received SSE scrape request: "${query}" | Sources: [${selectedSources.join(', ')}] (total max: ${maxResults})`);
 
-  // Send initial connection message
-  sendSSE(res, 'info', { message: 'Browser initialized. Navigating to Google Maps...' });
+  let isAborted = false;
+  req.on('close', () => {
+    console.log(`Client disconnected. Aborting scrape task for query: "${query}"`);
+    isAborted = true;
+  });
 
+  // Split maxResults limit evenly across selected sources
+  const resultsPerSource = Math.max(1, Math.floor(maxResults / selectedSources.length));
+  let aggregatedResults = [];
+  
   try {
-    const results = await scrapeGoogleMaps(query, maxResults, (item, percent) => {
-      // Send real-time progress update
-      sendSSE(res, 'progress', { item, percent });
-    });
+    for (let i = 0; i < selectedSources.length; i++) {
+      if (isAborted) {
+        console.log("Scraping aborted early due to client disconnect.");
+        break;
+      }
+
+      const source = selectedSources[i];
+      const sourceLimit = (i === selectedSources.length - 1) 
+        ? (maxResults - aggregatedResults.length) // Give remainder to the last source
+        : resultsPerSource;
+
+      if (sourceLimit <= 0) break;
+
+      sendSSE(res, 'info', { message: `Menginisialisasi pencarian di platform: ${source.toUpperCase()} (Batas: ${sourceLimit})...` });
+
+      let sourceResults = [];
+      if (source === 'gmaps') {
+        sourceResults = await scrapeGoogleMaps(query, sourceLimit, (item, percent) => {
+          if (isAborted) return;
+          // Calculate overall progress percentage
+          const overallPercent = Math.min(100, Math.round(((i + (percent / 100)) / selectedSources.length) * 100));
+          sendSSE(res, 'progress', { item, percent: overallPercent });
+        });
+      } else {
+        sourceResults = await scrapeSocialMedia(query, source, sourceLimit, (item, percent) => {
+          if (isAborted) return;
+          const overallPercent = Math.min(100, Math.round(((i + (percent / 100)) / selectedSources.length) * 100));
+          sendSSE(res, 'progress', { item, percent: overallPercent });
+        });
+      }
+
+      // Add source identification tags
+      sourceResults.forEach(item => {
+        item.sourcePlatform = source;
+      });
+
+      aggregatedResults = aggregatedResults.concat(sourceResults);
+    }
+
+    if (isAborted) {
+      res.end();
+      return;
+    }
 
     // Auto-save the crawl results locally to /data/ folder
     let fileId = '';
-    if (results.length > 0) {
+    if (aggregatedResults.length > 0) {
       fileId = `${query.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${Date.now()}`;
       const filePath = path.join(DATA_DIR, `crawl_${fileId}.json`);
       const fileContent = {
         id: fileId,
         query: query,
         timestamp: new Date().toISOString(),
-        leads: results
+        leads: aggregatedResults
       };
       fs.writeFileSync(filePath, JSON.stringify(fileContent, null, 2));
       console.log(`Crawl saved successfully to disk: crawl_${fileId}.json`);
@@ -62,15 +111,17 @@ app.get('/api/scrape', async (req, res) => {
 
     // Send completion message
     sendSSE(res, 'complete', { 
-      message: `Scraping completed successfully. Extracted ${results.length} places.`,
+      message: `Scraping completed successfully. Extracted ${aggregatedResults.length} leads in total.`,
       fileId,
-      results 
+      results: aggregatedResults 
     });
     res.end();
 
   } catch (error) {
     console.error('Scraping handler error:', error);
-    sendSSE(res, 'error', { message: error.message || 'An unknown error occurred during scraping.' });
+    if (!isAborted) {
+      sendSSE(res, 'error', { message: error.message || 'An unknown error occurred during scraping.' });
+    }
     res.end();
   }
 });

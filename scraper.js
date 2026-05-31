@@ -315,4 +315,158 @@ async function extractPlaceDetails(page) {
   });
 }
 
-module.exports = { scrapeGoogleMaps };
+/**
+ * Scrapes social media links (Instagram, TikTok, Facebook) via Google Search.
+ * Extracts profile name, link, and potential phone/email details.
+ */
+async function scrapeSocialMedia(query, source, maxResults = 10, onProgress = null) {
+  console.log(`Starting social scrape via Google Search for platform: "${source}" | Query: "${query}"`);
+  
+  const browser = await puppeteer.launch({
+    headless: "new",
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--window-size=1280,800'
+    ]
+  });
+
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 800 });
+
+  try {
+    // Map source type to Google search query dork
+    let domainDork = '';
+    let category = '';
+    if (source === 'instagram') {
+      domainDork = 'site:instagram.com';
+      category = 'Instagram Profile';
+    } else if (source === 'tiktok') {
+      domainDork = 'site:tiktok.com';
+      category = 'TikTok Account';
+    } else if (source === 'facebook') {
+      domainDork = 'site:facebook.com';
+      category = 'Facebook Page';
+    } else {
+      domainDork = `site:${source}.com`;
+      category = `${source} Account`;
+    }
+
+    const fullQuery = `${domainDork} "${query}"`;
+    // Add &num=100 query parameter to request up to 100 organic Google search results on a single page
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(fullQuery)}&num=${Math.max(20, maxResults)}`;
+    
+    await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+
+    // Wait for search results container
+    await page.waitForSelector('div.g, .MjjYed, .kvH3ic', { timeout: 15000 });
+
+    const rawResults = await page.evaluate((source) => {
+      const items = [];
+      const cards = Array.from(document.querySelectorAll('div.g, .MjjYed, .kvH3ic'));
+      
+      cards.forEach(card => {
+        const linkEl = card.querySelector('a[href]');
+        if (!linkEl) return;
+        
+        const url = linkEl.href;
+        if (!url || url.includes('google.com') || url.includes('webcache.googleusercontent.com')) return;
+        
+        // Ensure the link matches our platform
+        if (source === 'instagram' && !url.includes('instagram.com')) return;
+        if (source === 'tiktok' && !url.includes('tiktok.com')) return;
+        if (source === 'facebook' && !url.includes('facebook.com')) return;
+
+        const titleEl = card.querySelector('h3');
+        const name = titleEl ? titleEl.textContent.trim() : '';
+        if (!name) return;
+
+        // Extract description snippet
+        const snippetEl = card.querySelector('.VwiC3b, .yD32ce, .MUFPAc, .bZ3aTe, span.aCOpRe') || card.querySelector('div[style*="-webkit-line-clamp"]');
+        const snippet = snippetEl ? snippetEl.textContent.trim() : '';
+
+        items.push({
+          name,
+          url,
+          snippet
+        });
+      });
+      return items;
+    }, source);
+
+    console.log(`Found ${rawResults.length} organic links on Google Search page.`);
+
+    const results = [];
+    const seenUrls = new Set();
+
+    // Helper regex to extract phone and email contacts from text snippet
+    const extractContacts = (text) => {
+      const phoneRegex = /(\+?62|0)[2-9]\d{1,4}[-.\s]?\d{3,4}[-.\s]?\d{3,5}/g;
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+      const phoneMatches = text.match(phoneRegex);
+      const emailMatches = text.match(emailRegex);
+
+      let phone = '';
+      if (phoneMatches) {
+        const validPhones = phoneMatches.map(p => p.replace(/[-\s.()]/g, '')).filter(p => p.length >= 9 && p.length <= 15);
+        if (validPhones.length > 0) {
+          phone = phoneMatches[phoneMatches.map(p => p.replace(/[-\s.()]/g, '')).indexOf(validPhones[0])];
+        }
+      }
+
+      const email = emailMatches ? emailMatches[0] : '';
+      return { phone, email };
+    };
+
+    for (const item of rawResults) {
+      if (results.length >= maxResults) break;
+      if (seenUrls.has(item.url)) continue;
+      seenUrls.add(item.url);
+
+      const contacts = extractContacts(`${item.name} ${item.snippet}`);
+
+      // Format social name clean (strip profile suffix commonly indexed by Google)
+      let nameClean = item.name;
+      if (source === 'instagram') {
+        nameClean = nameClean.split('(@')[0].split('• Instagram')[0].trim();
+      } else if (source === 'tiktok') {
+        nameClean = nameClean.split('| TikTok')[0].split('on TikTok')[0].trim();
+      } else if (source === 'facebook') {
+        nameClean = nameClean.split('| Facebook')[0].split('- Home | Facebook')[0].trim();
+      }
+
+      const details = {
+        id: generateId(item.url),
+        name: nameClean || item.name,
+        rating: null,
+        reviewsCount: 0,
+        category: category,
+        address: contacts.email ? `Email: ${contacts.email} | Bio: ${item.snippet}` : `Bio: ${item.snippet}`,
+        website: item.url,
+        phone: contacts.phone,
+        hours: '',
+        url: item.url,
+        contacted: false
+      };
+
+      results.push(details);
+
+      if (onProgress) {
+        const progressPercent = Math.min(100, Math.round((results.length / maxResults) * 100));
+        onProgress({ ...details, query }, progressPercent);
+      }
+    }
+
+    await browser.close();
+    return results;
+
+  } catch (err) {
+    console.error("Social media Google scrape error:", err);
+    if (browser) await browser.close();
+    throw err;
+  }
+}
+
+module.exports = { scrapeGoogleMaps, scrapeSocialMedia };

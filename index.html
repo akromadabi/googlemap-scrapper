@@ -62,6 +62,32 @@
                 </div>
 
                 <div class="input-group">
+                  <label>Search Targets (Pilih Sumber)</label>
+                  <div class="checkbox-grid">
+                    <label class="checkbox-wrapper">
+                      <input type="checkbox" class="source-checkbox" value="gmaps" checked>
+                      <span class="checkbox-custom"><i class="fa-solid fa-check"></i></span>
+                      <span class="checkbox-label"><i class="fa-solid fa-map-location-dot"></i> G-Maps</span>
+                    </label>
+                    <label class="checkbox-wrapper">
+                      <input type="checkbox" class="source-checkbox" value="instagram">
+                      <span class="checkbox-custom"><i class="fa-solid fa-check"></i></span>
+                      <span class="checkbox-label"><i class="fa-brands fa-instagram"></i> Instagram</span>
+                    </label>
+                    <label class="checkbox-wrapper">
+                      <input type="checkbox" class="source-checkbox" value="tiktok">
+                      <span class="checkbox-custom"><i class="fa-solid fa-check"></i></span>
+                      <span class="checkbox-label"><i class="fa-brands fa-tiktok"></i> TikTok</span>
+                    </label>
+                    <label class="checkbox-wrapper">
+                      <input type="checkbox" class="source-checkbox" value="facebook">
+                      <span class="checkbox-custom"><i class="fa-solid fa-check"></i></span>
+                      <span class="checkbox-label"><i class="fa-brands fa-facebook"></i> Facebook</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="input-group">
                   <div class="label-row">
                     <label for="max-results">Max Results Limit</label>
                     <span id="max-val-display" class="val-badge">25</span>
@@ -103,6 +129,9 @@
                   <div class="log-item system">Initializing browser...</div>
                 </div>
               </div>
+              <button type="button" id="abort-btn-large" class="btn-abort-large">
+                <i class="fa-solid fa-circle-stop"></i> Batal Scraping
+              </button>
             </div>
           </section>
 

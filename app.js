@@ -107,6 +107,7 @@ const progressBarFill = document.getElementById('progress-bar-fill');
 const progressPercentText = document.getElementById('progress-percent');
 const progressCountText = document.getElementById('progress-count');
 const abortBtn = document.getElementById('abort-btn');
+const abortBtnLarge = document.getElementById('abort-btn-large');
 const activityLogItems = document.getElementById('activity-log-items');
 
 // Stats Elements
@@ -192,6 +193,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Abort scraping button
   abortBtn.addEventListener('click', stopScraping);
+  if (abortBtnLarge) {
+    abortBtnLarge.addEventListener('click', stopScraping);
+  }
 
   // Tab switching handler
   tabBtns.forEach(btn => {
@@ -782,6 +786,14 @@ function startScraping() {
 
   if (!query) return;
 
+  // Retrieve checked search target sources
+  const selectedCheckboxes = Array.from(document.querySelectorAll('.source-checkbox:checked'));
+  if (selectedCheckboxes.length === 0) {
+    alert('Silakan pilih minimal satu target pencarian (Google Maps, Instagram, TikTok, atau Facebook).');
+    return;
+  }
+  const sources = selectedCheckboxes.map(cb => cb.value).join(',');
+
   // UI state transition
   submitBtn.disabled = true;
   submitBtn.classList.add('loading');
@@ -796,6 +808,10 @@ function startScraping() {
   progressPercentText.textContent = '0%';
   progressCountText.textContent = `0 / ${max} Leads`;
   
+  if (abortBtnLarge) {
+    abortBtnLarge.style.display = 'flex';
+  }
+  
   activityLogItems.innerHTML = '';
   scrapedLeads = [];
   filteredLeads = [];
@@ -809,7 +825,7 @@ function startScraping() {
   writeLog(`Initializing scraper task for "${query}" (Target: ${max})...`, 'system');
 
   // Connect to SSE Endpoint
-  const url = `/api/scrape?query=${encodeURIComponent(query)}&max=${max}`;
+  const url = `/api/scrape?query=${encodeURIComponent(query)}&max=${max}&sources=${sources}`;
   eventSource = new EventSource(url);
 
   eventSource.onmessage = (event) => {
@@ -890,6 +906,10 @@ function cleanupScrapeState() {
   submitBtn.classList.remove('loading');
   submitBtn.querySelector('.btn-text').textContent = 'Generate Leads';
   
+  if (abortBtnLarge) {
+    abortBtnLarge.style.display = 'none';
+  }
+
   // Update progress header state
   const progressHeaderTitle = progressCard.querySelector('.progress-header h3');
   if (progressHeaderTitle) {
