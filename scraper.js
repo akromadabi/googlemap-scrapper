@@ -69,6 +69,7 @@ async function scrapeGoogleMaps(query, maxResults = 10, onProgress = null) {
 
     let results = [];
     let seenUrls = new Set();
+    let seenUniqueKeys = new Set(); // Prevent duplicate name/phone/address in results
     let endOfListReached = false;
     let retries = 0;
 
@@ -125,6 +126,11 @@ async function scrapeGoogleMaps(query, maxResults = 10, onProgress = null) {
         try {
           console.log(`Extracting details for: ${place.title}`);
           
+          // Get currently opened place title to detect if card updates
+          const oldTitle = await page.evaluate(() => {
+            return document.querySelector('h1.DUwDvf')?.textContent?.trim() || "";
+          });
+
           // Generate a safe unique ID for this element in order to click it natively without selector issues
           const tempId = `place-click-${Date.now()}`;
           const elementAssigned = await page.evaluate((url, id) => {
@@ -143,20 +149,56 @@ async function scrapeGoogleMaps(query, maxResults = 10, onProgress = null) {
             throw new Error("Could not locate the listing element in the DOM.");
           }
 
-          // Native Puppeteer click triggers real OS-level hover/click event handlers!
-          await page.click(`#${tempId}`);
+          // Trigger click using BOTH page.click and browser-level .click() fallback
+          try {
+            await page.click(`#${tempId}`);
+          } catch (clickErr) {
+            console.log("Puppeteer click failed, trying DOM click...");
+            await page.evaluate((id) => {
+              document.getElementById(id)?.click();
+            }, tempId);
+          }
 
-          // Wait for details card to open and display title
-          const titleSelector = 'h1.DUwDvf';
-          await page.waitForSelector(titleSelector, { timeout: 8000 });
-          // Wait briefly for details (animations/ajax)
-          await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 1000)));
+          // Wait for the detail panel to update to the new place details
+          let loaded = false;
+          const startTime = Date.now();
+          while (Date.now() - startTime < 8000) {
+            const currentTitle = await page.evaluate(() => {
+              return document.querySelector('h1.DUwDvf')?.textContent?.trim() || "";
+            });
+            
+            // If the title has updated (different from previous place, or matches target)
+            if (currentTitle && (currentTitle !== oldTitle || !oldTitle)) {
+              loaded = true;
+              break;
+            }
+            await new Promise(resolve => setTimeout(resolve, 250));
+          }
+
+          if (!loaded) {
+            console.log(`Warning: Detail card did not transition from "${oldTitle}" to new place.`);
+          }
+
+          // Wait briefly for content to finish rendering
+          await new Promise(resolve => setTimeout(resolve, 600));
 
           // Extract details
           const details = await extractPlaceDetails(page);
           details.url = place.url;
           details.id = generateId(place.url);
           details.contacted = false;
+
+          // Double prevention: filter duplicates by Name + Address or Name + Phone
+          const nameClean = (details.name || '').toLowerCase().trim();
+          const secondaryClean = (details.phone || details.address || '').toLowerCase().trim();
+          const uniqueKey = `${nameClean}|${secondaryClean}`;
+          
+          if (seenUniqueKeys.has(uniqueKey)) {
+            console.log(`Duplicate skipped in result list: ${details.name}`);
+            continue;
+          }
+          
+          seenUniqueKeys.add(uniqueKey);
           results.push(details);
 
           console.log(`Scraped (${results.length}/${maxResults}): ${details.name}`);
