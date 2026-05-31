@@ -679,6 +679,14 @@ function renderOutreachList(leads, isSearch = false) {
       </div>
     `;
 
+    // Make preview collapsible on click
+    const previewDiv = card.querySelector('.prospect-msg-preview');
+    if (previewDiv) {
+      previewDiv.addEventListener('click', () => {
+        previewDiv.classList.toggle('expanded');
+      });
+    }
+
     // Intercept clicks on WA outreach button to prevent double messages and save states
     const waBtn = card.querySelector('.btn-whatsapp');
     if (waBtn) {

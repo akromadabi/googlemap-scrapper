@@ -966,15 +966,47 @@ tr:hover:not(.empty-row-placeholder) {
 }
 
 .prospect-msg-preview {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
-  background-color: var(--bg-app);
+  background-color: var(--bg-input);
   border: 1px solid var(--border-muted);
   border-radius: var(--radius-md);
-  padding: 8px 12px;
-  margin-top: 4px;
-  line-height: 1.5;
+  padding: 6px 12px 18px 12px;
+  margin-top: 6px;
+  line-height: 1.4;
   white-space: pre-wrap;
+  max-height: 52px; /* limits default preview height (approx 2 lines) */
+  overflow: hidden;
+  position: relative;
+  transition: max-height 0.2s ease-out;
+  cursor: pointer;
+  user-select: none;
+}
+
+.prospect-msg-preview::after {
+  content: ' Lihat Pesan (Click to Expand)';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  background: linear-gradient(to top, var(--bg-input) 30%, rgba(248, 250, 252, 0) 100%);
+  color: var(--accent-text);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 8px 0 2px 0;
+  border-bottom-left-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+
+.prospect-msg-preview.expanded {
+  max-height: 1000px;
+  padding-bottom: 8px;
+  overflow-y: auto;
+}
+
+.prospect-msg-preview.expanded::after {
+  display: none;
 }
 
 .prospect-meta-row {
@@ -1302,6 +1334,31 @@ tr:hover:not(.empty-row-placeholder) {
     gap: 8px;
   }
 
+  .prospects-header-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    padding-bottom: 8px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .prospects-filters {
+    width: 100% !important;
+    display: flex !important;
+    gap: 6px !important;
+  }
+
+  .btn-toggle-no-phone {
+    flex-shrink: 0 !important;
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+  }
+
+  .prospects-filters input {
+    flex: 1 !important;
+    width: 100% !important;
+  }
+
   .search-filter-controls {
     width: 100%;
     justify-content: space-between;
@@ -1458,8 +1515,12 @@ tr:hover:not(.empty-row-placeholder) {
 
   .prospect-msg-preview {
     font-size: 11px;
-    padding: 6px 8px;
+    padding: 6px 8px 16px 8px;
     border-radius: var(--radius-sm);
+  }
+
+  .prospect-msg-preview.expanded {
+    padding-bottom: 6px;
   }
 
   .btn-whatsapp {
